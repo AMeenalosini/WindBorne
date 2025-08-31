@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head> 
+  <meta charset="UTF-8">
+  <title>Extreme Weather Balloon Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map { width: 100%; height: 600px; }
+  </style>
+</head>
+<body>
+  <h1>Balloons in Extreme Weather Zones</h1>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    const americaBounds = { latMin: -60, latMax: 75, lonMin: -170, lonMax: -30 };
+    const OPENWEATHER_API_KEY = "f08de2550715e5886dc22c7d58906245"; // Replace with your API key
+
+    // Determine if weather is extreme
+    function isExtremeWeather(weather) {
+      if (!weather) return false;
+      const { temp, wind, main } = weather;
+      if (wind > 15) return true;
+      if (temp < 0 || temp > 35) return true;
+      if (['Thunderstorm','Tornado','Squall','Snow'].includes(main)) return true;
+      return false;
+    }
+
+    async function getWeather(lat, lon) {
+      try {
+        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${OPENWEATHER_API_KEY}`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = await res.json();
+        return {
+          temp: data.main.temp,
+          wind: data.wind.speed,
+          main: data.weather[0].main,
+          desc: data.weather[0].description
+        };
+      } catch {
+        return null;
+      }
+    }
+
+    async function loadExtremeWeatherBalloons() {
+      const map = L.map('map').setView([20, -90], 3);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      const bounds = [];
+
+      try {
+        const res = await fetch('http://localhost:4000/balloons/0'); // latest balloons
+        const balloons = await res.json();
+
+        const weatherPromises = balloons.map(c => getWeather(c[0], c[1]));
+        const weatherData = await Promise.all(weatherPromises);
+
+        balloons.forEach((c, i) => {
+          const lat = c[0], lon = c[1], alt = c[2];
+
+          if (lat >= americaBounds.latMin && lat <= americaBounds.latMax &&
+              lon >= americaBounds.lonMin && lon <= americaBounds.lonMax) {
+
+            const weather = weatherData[i];
+            const extreme = isExtremeWeather(weather);
+            const color = extreme ? 'red' : 'blue';
+
+            let popupText = `Lat: ${lat.toFixed(2)}, Lon: ${lon.toFixed(2)}, Alt: ${alt.toFixed(1)} km`;
+            if (weather) {
+              popupText += `<br>Temp: ${weather.temp}°C, Wind: ${weather.wind} m/s, Weather: ${weather.desc}`;
+            }
+
+            L.circleMarker([lat, lon], { color, radius: 6 }).addTo(map)
+              .bindPopup(popupText);
+
+            bounds.push([lat, lon]);
+          }
+        });
+
+        if (bounds.length > 0) map.fitBounds(bounds);
+
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    loadExtremeWeatherBalloons();
+  </script>
+</body>
+</html>
