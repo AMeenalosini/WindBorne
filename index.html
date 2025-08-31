@@ -1,3 +1,15 @@
+<!--
+This code displays the extreme weather in the latest balloon's location in the US with the color code on the map. 
+Blue for normal weather and Red for extreme weather.
+
+APIs used: 
+Open WeatherMap API :- https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${OPENWEATHER_API_KEY}
+WindBorne API (proxied via Express) :- http://localhost:4000/balloons/0
+Map installed using :-
+  https://unpkg.com/leaflet/dist/leaflet.css
+  https://unpkg.com/leaflet/dist/leaflet.js
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head> 
@@ -6,7 +18,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
     #map { width: 100%; height: 600px; }
-  </style>
+  </style> 
 </head>
 <body>
   <h1>Balloons in Extreme Weather Zones</h1>
@@ -15,7 +27,7 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
     const americaBounds = { latMin: -60, latMax: 75, lonMin: -170, lonMax: -30 };
-    const OPENWEATHER_API_KEY = "f08de2550715e5886dc22c7d58906245"; // Replace with your API key
+    const OPENWEATHER_API_KEY = "f08de2550715e5886dc22c7d58906245"; // API key
 
     // Determine if weather is extreme
     function isExtremeWeather(weather) {
@@ -44,16 +56,12 @@
       }
     }
 
-    async function loadExtremeWeatherBalloons() {
-      const map = L.map('map').setView([20, -90], 3);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(map);
-
+    async function loadExtremeWeatherBalloons(map) {
       const bounds = [];
 
       try {
-        const res = await fetch('http://localhost:4000/balloons/0'); // latest balloons
+        // Fetch latest balloon positions (proxied through Express)
+        const res = await fetch('http://localhost:4000/balloons/0');
         const balloons = await res.json();
 
         const weatherPromises = balloons.map(c => getWeather(c[0], c[1]));
@@ -84,11 +92,32 @@
         if (bounds.length > 0) map.fitBounds(bounds);
 
       } catch (err) {
-        console.error(err);
+        console.error("Error loading balloons:", err);
       }
     }
 
-    loadExtremeWeatherBalloons();
+    async function initMap() {
+      const map = L.map('map').setView([20, -90], 3);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      // Load the map once at startup
+      await loadExtremeWeatherBalloons(map);
+
+      // Refresh every 10 minutes to match backend cache
+      setInterval(() => {
+        // Clear existing markers before reloading
+        map.eachLayer(layer => {
+          if (layer instanceof L.CircleMarker) {
+            map.removeLayer(layer);
+          }
+        });
+        loadExtremeWeatherBalloons(map);
+      }, 10 * 60 * 1000);
+    }
+
+    initMap();
   </script>
 </body>
 </html>
